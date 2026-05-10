@@ -13,41 +13,42 @@ import java.util.zip.ZipInputStream;
 
 public class NetherPathfinder {
 
-    // How the raytracer will treat chunks that aren't actually observed.
-    // When chunk generation is used the caller must synchronize calls that read from the cache with calls that may mutate the cache.
-    // No synchronization is done within the jni code
-    public static int CACHE_MISS_GENERATE = 0;
-    public static int CACHE_MISS_AIR = 1;
-    public static int CACHE_MISS_SOLID = 2;
+    // 光线追踪器如何处理未实际观察到的区块。
+    // 当使用区块生成时，调用者必须同步读缓存和可能改变缓存的操作。
+    // JNI 代码内部不做任何同步。
+    public static int CACHE_MISS_GENERATE = 0; // 生成区块
+    public static int CACHE_MISS_AIR = 1;      // 视为空气
+    public static int CACHE_MISS_SOLID = 2;    // 视为实心
 
-    public static int DIMENSION_OVERWORLD = 0;
-    public static int DIMENSION_NETHER = 1;
-    public static int DIMENSION_END = 2;
+    public static int DIMENSION_OVERWORLD = 0; // 主世界
+    public static int DIMENSION_NETHER = 1;    // 下界
+    public static int DIMENSION_END = 2;       // 末地
 
-    // pass true to use the custom chunk allocator that will reduce memory usage and maybe be faster. false to just use new/delete
-    // this is only supported on systems with 4k pages
+    // 传入 true 以使用自定义区块分配器，它可以减少内存使用并可能更快。
+    // false 则直接使用 new/delete。
+    // 仅在 4k 内存页的系统上受支持。
     public static native long newContext(long seed, String baritoneCacheDirCanBeNull, int dimension, int maxHeight, boolean allocator);
     public static native void freeContext(long pointer);
 
     /*
-    from BlockStateContainer
+    来源于 BlockStateContainer 中的方法：
     private static int getIndex(int x, int y, int z)
     {
         return y << 8 | z << 4 | x;
     }
 
-    chunkX and chunkZ are chunk coords, not block coords.
+    chunkX 和 chunkZ 是区块坐标，并非方块坐标。
     */
     public static native void insertChunkData(long context, int chunkX, int chunkZ, boolean[] data);
 
     public static native long allocateAndInsertChunk(long context, int x, int z);
 
-    // do not write to the chunk this returns
+    // 不要写入此方法返回的区块数据
     public static native long getChunkOrDefault(long context, int x, int z, boolean solid);
 
     public static native long getChunk(long context, int x, int z);
 
-    // returns true if the chunk existed and the change was made
+    // 如果区块存在且更改完成，返回 true
     public static native boolean setChunkState(long context, int x, int z, boolean fromJava);
 
     public static native boolean hasChunkFromJava(long context, int x, int z);
@@ -60,15 +61,16 @@ public class NetherPathfinder {
 
     public static void raytrace(long context, int fakeChunkMode, int inputs, double[] start, double[] end, boolean[] hitsOut, double[] hitPosOutCanBeNull) {
         if (start.length < (inputs * 3) || end.length < (inputs * 3) || hitsOut.length < inputs || (hitPosOutCanBeNull != null && hitPosOutCanBeNull.length < (inputs * 3))) {
-            throw new IllegalArgumentException("Bad array lengths idiot");
+            throw new IllegalArgumentException("数组长度有误，请检查参数");
         }
         raytrace0(context, fakeChunkMode, inputs, start, end, hitsOut, hitPosOutCanBeNull);
     }
+
     private static native int isVisibleMulti0(long context, int fakeChunkMode, int inputs, double[] start, double[] end, boolean anyIfTrueElseAll);
 
     public static int isVisibleMulti(long context, int fakeChunkMode, int inputs, double[] start, double[] end, boolean anyIfTrueElseAll) {
         if (start.length < (inputs * 3) || end.length < (inputs * 3)) {
-            throw new IllegalArgumentException("Bad array lengths idiot");
+            throw new IllegalArgumentException("数组长度有误，请检查参数");
         }
         return isVisibleMulti0(context, fakeChunkMode, inputs, start, end, anyIfTrueElseAll);
     }
@@ -79,10 +81,13 @@ public class NetherPathfinder {
 
     static native long getX2Index();
 
-    // TODO: convenient function for computing a full path
+    // TODO: 方便使用者计算完整路径的工具方法
 
     private static final boolean IS_LOADED;
 
+    /**
+     * 当前系统是否支持原生加速库。
+     */
     public static boolean isThisSystemSupported() {
         return IS_LOADED;
     }
@@ -90,7 +95,7 @@ public class NetherPathfinder {
     private static String getNativeLibName() {
         final int bits = Integer.parseInt(System.getProperty("sun.arch.data.model"));
         if (bits != 64) {
-            throw new UnsupportedOperationException("Unsupported architecture (64-bit required)");
+            throw new UnsupportedOperationException("不支持的架构（需要64位）");
         }
 
         final String osName = System.getProperty("os.name").toLowerCase();
@@ -102,7 +107,7 @@ public class NetherPathfinder {
         } else if (osArch.equals("x86_64") || osArch.equals("amd64")) {
             arch = "x86_64";
         } else {
-            throw new UnsupportedOperationException("Unsupported architecture: " + osArch);
+            throw new UnsupportedOperationException("不支持的架构: " + osArch);
         }
 
         if (osName.contains("linux")) {
@@ -112,7 +117,7 @@ public class NetherPathfinder {
         } else if (osName.contains("mac")) {
             return "libnether_pathfinder-" + arch + ".dylib";
         } else {
-            throw new UnsupportedOperationException("Unsupported operating system: " + osName);
+            throw new UnsupportedOperationException("不支持的操作系统: " + osName);
         }
     }
 
@@ -139,7 +144,7 @@ public class NetherPathfinder {
                 return byteStream.toByteArray();
             }
         }
-        throw new NullPointerException("Failed to find pathfinder library: " + libName);
+        throw new NullPointerException("未找到寻路库: " + libName);
     }
 
     private static void tryLoadLibrary() throws IOException {
@@ -148,7 +153,7 @@ public class NetherPathfinder {
 
         final String[] split = libName.split("\\.");
         final Path tempFile = Files.createTempFile(split[0], "." + split[1]);
-        System.out.println("[nether-pathfinder] Created temp file at " + tempFile.toAbsolutePath());
+        System.out.println("[下界寻路] 已创建临时文件: " + tempFile.toAbsolutePath());
 
         try {
             Files.write(tempFile, libBytes);
@@ -157,9 +162,7 @@ public class NetherPathfinder {
             try {
                 Files.delete(tempFile);
             } catch (IOException ignored) {
-                System.err.println("[nether-pathfinder] Failed to delete temp file");
-//                System.out.println("trolled");
-//                ex.printStackTrace();
+                System.err.println("[下界寻路] 无法删除临时文件");
             }
             if (!tempFile.toFile().delete()) {
                 tempFile.toFile().deleteOnExit();
@@ -170,12 +173,13 @@ public class NetherPathfinder {
     static {
         boolean loaded = false;
         try {
+            // 始终尝试加载原生库，Android 环境下也会尝试
             tryLoadLibrary();
-            System.out.println("[nether-pathfinder] Loaded shared library");
+            System.out.println("[下界寻路] 已成功加载原生共享库");
             loaded = true;
         } catch (Throwable e) {
-            System.err.println("[nether-pathfinder] Failed to load shared library");
-            e.printStackTrace();
+            // 加载失败时仅输出简短的错误原因，不打印完整堆栈，避免刷屏
+            System.err.println("[下界寻路] 加载原生共享库失败，回退至纯 Java 实现。原因: " + e.toString());
         }
         IS_LOADED = loaded;
     }
