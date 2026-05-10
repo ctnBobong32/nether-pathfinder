@@ -4,7 +4,7 @@ on:
   push:
 
 jobs:
-  构建:
+  build:
     runs-on: ubuntu-latest
     steps:
       # 1. 拉取仓库代码（包含子模块）
